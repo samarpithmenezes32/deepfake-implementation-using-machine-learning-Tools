@@ -34,11 +34,11 @@ env/
 instance/
 .webassets-cache
 
-# PyTorch Models (optional - uncomment if model files are large)
-# *.pth
-# *.pt
-# *.h5
-# *.ckpt
+# PyTorch Models (large files excluded from repo)
+*.pth
+*.pt
+*.h5
+*.ckpt
 
 # Uploaded files and temporary data
 uploads/
