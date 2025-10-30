@@ -1,0 +1,56 @@
+{
+  "CNN (Dense Inception)": {
+    "dataset": "FaceForensics++",
+    "accuracy": 99.2,
+    "auc": 0.995,
+    "cross_dataset_auc": 0.847,
+    "real_time": false,
+    "flops_per_frame": "50G",
+    "memory_mb": 800
+  },
+  "Spectral Analysis": {
+    "dataset": "Multi-GAN",
+    "accuracy": 94.3,
+    "auc": 0.951,
+    "cross_dataset_auc": 0.923,
+    "real_time": true,
+    "flops_per_frame": "15G",
+    "memory_mb": 400
+  },
+  "Self-Consistency CNN": {
+    "dataset": "DFDC",
+    "accuracy": 95.8,
+    "auc": 0.981,
+    "cross_dataset_auc": 0.922,
+    "real_time": true,
+    "flops_per_frame": "20G",
+    "memory_mb": 500
+  },
+  "CoAtNet Transformer": {
+    "dataset": "DFDC",
+    "accuracy": 97.2,
+    "auc": 0.984,
+    "cross_dataset_auc": 0.889,
+    "real_time": false,
+    "flops_per_frame": "80G",
+    "memory_mb": 1200
+  },
+  "Multiscale Features": {
+    "dataset": "Celeb-DF",
+    "accuracy": 96.1,
+    "auc": 0.976,
+    "cross_dataset_auc": 0.901,
+    "real_time": true,
+    "flops_per_frame": "25G",
+    "memory_mb": 600
+  },
+  "LSTM Temporal": {
+    "dataset": "Mixed Video",
+    "accuracy": 93.7,
+    "auc": 0.967,
+    "cross_dataset_auc": 0.885,
+    "real_time": false,
+    "flops_per_frame": "35G",
+    "memory_mb": 700
+  }
+}

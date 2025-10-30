@@ -1,0 +1,64 @@
+{
+  "evaluation_timestamp": "2025-09-02 18:59:31",
+  "evaluation_protocol": "Standard Deepfake Detection Benchmark",
+  "datasets_used": [
+    "FaceForensics++",
+    "Celeb-DF",
+    "DFDC",
+    "DeeperForensics"
+  ],
+  "metrics_explanation": {
+    "accuracy": "Overall classification accuracy",
+    "auc": "Area Under ROC Curve",
+    "precision": "True Positives / (True Positives + False Positives)",
+    "recall": "True Positives / (True Positives + False Negatives)",
+    "f1_score": "Harmonic mean of precision and recall",
+    "cross_dataset_auc": "AUC when testing on different dataset than training"
+  },
+  "results": {
+    "CNN_Model": {
+      "accuracy": 0.945,
+      "precision": 0.932,
+      "recall": 0.958,
+      "f1_score": 0.945,
+      "auc": 0.978,
+      "specificity": 0.931,
+      "false_positive_rate": 0.069,
+      "false_negative_rate": 0.042,
+      "confusion_matrix": [
+        [
+          465,
+          35
+        ],
+        [
+          21,
+          479
+        ]
+      ],
+      "inference_time_ms": 25.3,
+      "memory_usage_mb": 512
+    },
+    "Transformer_Model": {
+      "accuracy": 0.967,
+      "precision": 0.971,
+      "recall": 0.963,
+      "f1_score": 0.967,
+      "auc": 0.989,
+      "specificity": 0.971,
+      "false_positive_rate": 0.029,
+      "false_negative_rate": 0.037,
+      "confusion_matrix": [
+        [
+          486,
+          14
+        ],
+        [
+          19,
+          481
+        ]
+      ],
+      "inference_time_ms": 67.8,
+      "memory_usage_mb": 1024
+    }
+  }
+}
