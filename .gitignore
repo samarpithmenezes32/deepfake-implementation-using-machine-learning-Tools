@@ -42,6 +42,9 @@ instance/
 
 # Uploaded files and temporary data
 uploads/
+outputs/
+input/
+inputs/
 *.tmp
 *.log
 

@@ -45,9 +45,11 @@ def get_dataset_samples():
         cls_dir = os.path.join(input_dir, cls)
         if os.path.exists(cls_dir):
             # Images
-            for f in os.listdir(cls_dir):
+            images_dir = os.path.join(cls_dir, 'images')
+            target_img_dir = images_dir if os.path.exists(images_dir) else cls_dir
+            for f in os.listdir(target_img_dir):
                 if f.lower().endswith(('.jpg', '.jpeg', '.png')):
-                    path = os.path.join(cls_dir, f)
+                    path = os.path.join(target_img_dir, f)
                     samples[cls]['images'].append({'name': f, 'path': path})
             
             # Videos
@@ -216,6 +218,118 @@ def api_detect():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/detect-all', methods=['POST'])
+def api_detect_all():
+    """Run ALL 5 models on the same file — production multi-model ensemble pipeline"""
+    import time
+
+    filepath = None
+    filename = None
+
+    if 'filepath' in request.form:
+        filepath = request.form.get('filepath')
+        filename = os.path.basename(filepath)
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'File not found: {filepath}'}), 400
+    elif 'file' in request.files:
+        file = request.files['file']
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'File type not allowed'}), 400
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+    else:
+        return jsonify({'error': 'No file provided'}), 400
+
+    ext = filename.rsplit('.', 1)[1].lower()
+    is_image = ext in {'jpg', 'jpeg', 'png'}
+
+    if is_image:
+        img = cv2.imread(filepath)
+        if img is None:
+            return jsonify({'error': 'Could not read image file'}), 400
+    
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model_order = ['spectral', 'cnn', 'transformer', 'hybrid', 'lstm']
+    per_model = []
+    total_start = time.time()
+
+    for mtype in model_order:
+        try:
+            t0 = time.time()
+            det = UnifiedDeepfakeDetector(model_type=mtype, device=device, pretrained=True)
+            
+            if is_image:
+                fake_prob, confidence = det.detect_frame(img)
+                pred = 'FAKE' if fake_prob > 0.5 else 'REAL'
+            else:
+                vr = det.detect_video(filepath, sample_rate=15)
+                fake_prob = vr['avg_fake_probability']
+                confidence = max(fake_prob, 1 - fake_prob)
+                pred = vr['final_prediction']
+
+            elapsed = round((time.time() - t0) * 1000)
+            info = UnifiedDeepfakeDetector.get_model_info(mtype)
+            bench = UnifiedDeepfakeDetector.get_benchmarks(mtype)
+
+            per_model.append({
+                'model': mtype,
+                'name': info.get('name', mtype),
+                'description': info.get('desc', ''),
+                'fake_probability': round(float(fake_prob), 4),
+                'confidence': round(float(confidence), 4),
+                'prediction': pred,
+                'latency_ms': elapsed,
+                'benchmark_accuracy': bench.get('accuracy', 0),
+                'benchmark_auc': bench.get('auc', 0),
+            })
+        except Exception as e:
+            per_model.append({
+                'model': mtype,
+                'name': mtype,
+                'error': str(e),
+                'prediction': 'ERROR',
+                'fake_probability': 0,
+                'confidence': 0,
+                'latency_ms': 0,
+            })
+
+    total_elapsed = round((time.time() - total_start) * 1000)
+
+    # Weighted ensemble verdict (weight by benchmark accuracy)
+    valid = [m for m in per_model if m.get('prediction') not in ('ERROR',)]
+    if valid:
+        weights = [m.get('benchmark_accuracy', 95) for m in valid]
+        w_sum = sum(weights)
+        ensemble_prob = sum(m['fake_probability'] * w for m, w in zip(valid, weights)) / w_sum
+        ensemble_conf = sum(m['confidence'] * w for m, w in zip(valid, weights)) / w_sum
+        vote_fake = sum(1 for m in valid if m['prediction'] == 'FAKE')
+        vote_real = len(valid) - vote_fake
+    else:
+        ensemble_prob = 0.5
+        ensemble_conf = 0.5
+        vote_fake = 0
+        vote_real = 0
+
+    result = {
+        'type': 'image' if is_image else 'video',
+        'filename': filename,
+        'models': per_model,
+        'ensemble': {
+            'weighted_fake_probability': round(float(ensemble_prob), 4),
+            'weighted_confidence': round(float(ensemble_conf), 4),
+            'prediction': 'FAKE' if ensemble_prob > 0.5 else 'REAL',
+            'votes_fake': vote_fake,
+            'votes_real': vote_real,
+            'total_models': len(valid),
+        },
+        'total_latency_ms': total_elapsed,
+        'timestamp': datetime.now().isoformat(),
+    }
+
+    return jsonify(result)
 
 
 @app.route('/api/model-details/<model_type>')
