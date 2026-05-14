@@ -408,6 +408,17 @@ class UnifiedDeepfakeDetector:
             model = model_class(pretrained=self.pretrained)
         
         model.to(self.device)
+        
+        # Load finetuned/retrained weights if available
+        weights_path = os.path.join('saved_models', f'{self.model_type}.pth')
+        if os.path.exists(weights_path):
+            try:
+                state_dict = torch.load(weights_path, map_location=self.device)
+                model.load_state_dict(state_dict)
+                print(f"[Info] Successfully loaded retrained weights from {weights_path}")
+            except Exception as e:
+                print(f"[Warning] Failed to load retrained weights from {weights_path}: {e}")
+                
         model.eval()
         return model
     
