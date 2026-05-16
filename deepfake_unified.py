@@ -423,8 +423,36 @@ class UnifiedDeepfakeDetector:
         return model
     
     def preprocess_frame(self, frame: np.ndarray) -> torch.Tensor:
-        """Preprocess a frame"""
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        """Preprocess a frame with intelligent face cropping for higher accuracy"""
+        # Lazy load face cascade to avoid unnecessary initialization overhead
+        if not hasattr(self, 'face_cascade'):
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60))
+        
+        # If faces are found, crop the largest face with a margin
+        if len(faces) > 0:
+            # Find the largest face by area (w * h)
+            largest_face = max(faces, key=lambda rect: rect[2] * rect[3])
+            x, y, w, h = largest_face
+            
+            # Add a 20% margin around the face
+            margin_x = int(w * 0.2)
+            margin_y = int(h * 0.2)
+            
+            y1 = max(0, y - margin_y)
+            y2 = min(frame.shape[0], y + h + margin_y)
+            x1 = max(0, x - margin_x)
+            x2 = min(frame.shape[1], x + w + margin_x)
+            
+            frame_to_process = frame[y1:y2, x1:x2]
+        else:
+            # Fallback to the full frame if no face is detected
+            frame_to_process = frame
+            
+        frame_rgb = cv2.cvtColor(frame_to_process, cv2.COLOR_BGR2RGB)
         frame_tensor = self.transform(frame_rgb)
         return frame_tensor.unsqueeze(0).to(self.device)
     
