@@ -16,15 +16,22 @@ from PIL import Image
 import torch
 from datetime import datetime
 
-from deepfake_unified import UnifiedDeepfakeDetector
+from deepfake_unified import UnifiedDeepfakeDetector, ForensicAnalyzer
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB max
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Global detector instance
-detector = None
+# Global detectors cache
+detectors_cache = {}
+
+
+def get_cached_detector(model_type, device):
+    global detectors_cache
+    if model_type not in detectors_cache:
+        detectors_cache[model_type] = UnifiedDeepfakeDetector(model_type=model_type, device=device, pretrained=True)
+    return detectors_cache[model_type]
 
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'mp4', 'avi', 'mov', 'mkv'}
 
@@ -179,10 +186,8 @@ def api_detect():
         return jsonify({'error': 'No file provided'}), 400
     
     try:
-        global detector
-        if detector is None or detector.model_type != model_type:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            detector = UnifiedDeepfakeDetector(model_type=model_type, device=device, pretrained=True)
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        det = get_cached_detector(model_type, device)
         
         # Run detection
         ext = filename.rsplit('.', 1)[1].lower()
@@ -190,7 +195,11 @@ def api_detect():
             img = cv2.imread(filepath)
             if img is None:
                 return jsonify({'error': 'Could not read image file'}), 400
-            fake_prob, confidence = detector.detect_frame(img)
+            fake_prob, confidence = det.detect_frame(img)
+            
+            # Run forensic analysis
+            forensic = ForensicAnalyzer.analyze_image(img)
+            
             result = {
                 'type': 'image',
                 'filename': filename,
@@ -198,10 +207,11 @@ def api_detect():
                 'fake_probability': round(float(fake_prob), 4),
                 'confidence': round(float(confidence), 4),
                 'prediction': 'FAKE' if fake_prob > 0.5 else 'REAL',
+                'forensic_analysis': forensic,
                 'timestamp': datetime.now().isoformat(),
             }
         else:  # Video
-            result_dict = detector.detect_video(filepath, sample_rate=10)
+            result_dict = det.detect_video(filepath, sample_rate=10)
             result = {
                 'type': 'video',
                 'filename': filename,
@@ -259,7 +269,7 @@ def api_detect_all():
     for mtype in model_order:
         try:
             t0 = time.time()
-            det = UnifiedDeepfakeDetector(model_type=mtype, device=device, pretrained=True)
+            det = get_cached_detector(mtype, device)
             
             if is_image:
                 fake_prob, confidence = det.detect_frame(img)
@@ -328,6 +338,9 @@ def api_detect_all():
         'total_latency_ms': total_elapsed,
         'timestamp': datetime.now().isoformat(),
     }
+
+    if is_image:
+        result['forensic_analysis'] = ForensicAnalyzer.analyze_image(img)
 
     return jsonify(result)
 
@@ -433,6 +446,17 @@ def api_training_curves(model_type):
 @app.template_filter('b64_image')
 def b64_image(data):
     return f"data:image/jpeg;base64,{data}" if data else ""
+
+
+@app.route('/api/reload-models')
+def api_reload_models():
+    """Clear cached models to force reloading from disk weights"""
+    global detectors_cache
+    detectors_cache.clear()
+    return jsonify({
+        'status': 'success',
+        'message': 'All models successfully flushed from memory cache. Next inference will reload weights from disk.'
+    })
 
 
 if __name__ == '__main__':

@@ -1484,9 +1484,12 @@
                     <p class="subtitle" style="margin-bottom: 24px;">Review the active weights, parameters, and structural layers of the 5 onboard deepfake neural network models.</p>
                     
                     <!-- View Comparison Dashboard Buttons -->
-                    <div style="margin-bottom: 24px;">
-                        <button onclick="showPerformanceComparison()" class="cyber-btn" style="width: 100%; justify-content: center; padding: 16px; border: 1.5px solid var(--border-glow); background: rgba(0,240,255,0.02); color: var(--cyan-primary); font-family: var(--font-tech); font-size: 11px; font-weight: bold; letter-spacing: 1px; cursor: pointer; border-radius: 8px; transition: all 0.3s; box-shadow: 0 0 15px rgba(0,240,255,0.05); outline: none;">
+                    <div style="margin-bottom: 24px; display: flex; gap: 16px; flex-wrap: wrap;">
+                        <button onclick="showPerformanceComparison()" class="cyber-btn" style="flex: 1; min-width: 250px; justify-content: center; padding: 16px; border: 1.5px solid var(--border-glow); background: rgba(0,240,255,0.02); color: var(--cyan-primary); font-family: var(--font-tech); font-size: 11px; font-weight: bold; letter-spacing: 1px; cursor: pointer; border-radius: 8px; transition: all 0.3s; box-shadow: 0 0 15px rgba(0,240,255,0.05); outline: none;">
                             📊 RENDER INTEGRATED PERFORMANCE BENCHMARKS DASHBOARD
+                        </button>
+                        <button onclick="reloadModelWeights()" class="cyber-btn" style="flex: 1; min-width: 250px; justify-content: center; padding: 16px; border: 1.5px solid rgba(0,255,136,0.15); background: rgba(0,255,136,0.02); color: var(--neon-green); border-color: rgba(0,255,136,0.4); font-family: var(--font-tech); font-size: 11px; font-weight: bold; letter-spacing: 1px; cursor: pointer; border-radius: 8px; transition: all 0.3s; box-shadow: 0 0 15px rgba(0,255,136,0.05); outline: none;">
+                            🔄 HOT-RELOAD TRAINED WEIGHTS FROM DISK
                         </button>
                     </div>
 
@@ -2098,6 +2101,98 @@
             }
         }
 
+        // Render forensic pixel & biometric examiner report
+        function getForensicReportHTML(forensic) {
+            if (!forensic) return '';
+            
+            const isFakeProb = (forensic.forensic_fake_probability * 100);
+            const isFake = isFakeProb > 55;
+            const color = isFake ? 'var(--neon-pink)' : 'var(--neon-green)';
+            const bg = isFake ? 'rgba(255,0,85,0.05)' : 'rgba(0,255,136,0.05)';
+            const borderCol = isFake ? 'rgba(255,0,85,0.2)' : 'rgba(0,255,136,0.2)';
+            
+            let metricsHTML = `
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:16px;">
+                    <!-- GAN Checkerboard -->
+                    <div style="background:rgba(16,28,48,0.4); border:1px solid rgba(255,255,255,0.05); padding:12px; border-radius:8px;">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; font-family:var(--font-tech); color:var(--text-muted); margin-bottom:6px;">
+                            <span>GAN / DIFFUSION NOISE GRID</span>
+                            <span style="color:${forensic.gan_score > 35 ? 'var(--neon-pink)' : 'white'}; font-weight:bold;">${forensic.gan_score.toFixed(1)}%</span>
+                        </div>
+                        <div style="height:6px; background:rgba(0,0,0,0.4); border-radius:3px; overflow:hidden;">
+                            <div style="width:${forensic.gan_score}%; height:100%; background:${forensic.gan_score > 35 ? 'var(--neon-pink)' : 'var(--cyan-primary)'};"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Camera CFA Signature -->
+                    <div style="background:rgba(16,28,48,0.4); border:1px solid rgba(255,255,255,0.05); padding:12px; border-radius:8px;">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; font-family:var(--font-tech); color:var(--text-muted); margin-bottom:6px;">
+                            <span>CAMERA CFA INTEGRITY</span>
+                            <span style="color:${forensic.cfa_score < 70 ? 'var(--neon-pink)' : 'var(--neon-green)'}; font-weight:bold;">${forensic.cfa_score.toFixed(1)}%</span>
+                        </div>
+                        <div style="height:6px; background:rgba(0,0,0,0.4); border-radius:3px; overflow:hidden;">
+                            <div style="width:${forensic.cfa_score}%; height:100%; background:${forensic.cfa_score < 70 ? 'var(--neon-pink)' : 'var(--neon-green)'};"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Bilateral Face Symmetry -->
+                    <div style="background:rgba(16,28,48,0.4); border:1px solid rgba(255,255,255,0.05); padding:12px; border-radius:8px; opacity: ${forensic.face_detected ? 1.0 : 0.45};">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; font-family:var(--font-tech); color:var(--text-muted); margin-bottom:6px;">
+                            <span>FACIAL MESH SYMMETRY</span>
+                            <span style="color:white; font-weight:bold;">${forensic.face_detected ? forensic.face_symmetry.toFixed(1) + '%' : 'N/A'}</span>
+                        </div>
+                        <div style="height:6px; background:rgba(0,0,0,0.4); border-radius:3px; overflow:hidden;">
+                            <div style="width:${forensic.face_detected ? forensic.face_symmetry : 0}%; height:100%; background:var(--cyan-primary);"></div>
+                        </div>
+                    </div>
+
+                    <!-- Ocular Geometry -->
+                    <div style="background:rgba(16,28,48,0.4); border:1px solid rgba(255,255,255,0.05); padding:12px; border-radius:8px; opacity: ${forensic.eyes_detected ? 1.0 : 0.45};">
+                        <div style="display:flex; justify-content:space-between; font-size:10px; font-family:var(--font-tech); color:var(--text-muted); margin-bottom:6px;">
+                            <span>OCULAR CIRCULARITY</span>
+                            <span style="color:white; font-weight:bold;">${forensic.eyes_detected ? forensic.pupil_circularity.toFixed(1) + '%' : 'N/A'}</span>
+                        </div>
+                        <div style="height:6px; background:rgba(0,0,0,0.4); border-radius:3px; overflow:hidden;">
+                            <div style="width:${forensic.eyes_detected ? forensic.pupil_circularity : 0}%; height:100%; background:var(--neon-purple);"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            return `
+                <div style="margin-top: 20px; border-top: 1px solid rgba(0, 240, 255, 0.15); padding-top: 20px;">
+                    <div style="font-family: var(--font-tech); font-size: 11px; letter-spacing: 1.5px; color: var(--cyan-primary); text-transform: uppercase; margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:14px;">🔍</span> FORENSIC PIXEL & BIOMETRIC EXAMINER
+                    </div>
+                    
+                    <div style="background: rgba(6, 18, 38, 0.6); border: 1px dashed rgba(0, 240, 255, 0.2); border-radius: 8px; padding: 16px;">
+                        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 14px;">
+                            <div style="min-width: 60px; height: 60px; border-radius: 50%; border: 3px solid ${color}; display: flex; align-items: center; justify-content: center; font-family: var(--font-tech); font-weight: 900; font-size: 1.2em; color: ${color}; text-shadow: 0 0 10px ${color}; background: rgba(0,0,0,0.4);">
+                                ${isFakeProb.toFixed(0)}%
+                            </div>
+                            <div>
+                                <div style="font-family: var(--font-tech); font-size: 10px; color: var(--text-muted); letter-spacing: 1px;">FORENSIC ANOMALY RATIO</div>
+                                <div style="font-size: 12px; font-weight: bold; color: ${color}; margin-top: 2px;">
+                                    ${isFake ? 'SYNTHETIC ARTIFACT SIGNATURE DETECTED' : 'NATURAL PHOTOGRAPHIC STRUCTURE VERIFIED'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="font-size: 11px; line-height: 1.5; color: #cbd5e1; font-family: var(--font-main); border-left: 3px solid var(--cyan-primary); padding-left: 10px; background: rgba(0, 240, 255, 0.02); padding-top: 8px; padding-bottom: 8px; margin-bottom: 14px;">
+                            <strong>FORENSIC FINDINGS:</strong> ${forensic.verdict}
+                        </div>
+
+                        ${metricsHTML}
+                        
+                        <div style="display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:9px; color:var(--text-muted); margin-top:12px; border-top:1px solid rgba(255,255,255,0.03); padding-top:8px;">
+                            <span>SHARPNESS: ${forensic.sharpness.toFixed(1)} (LAPLACIAN VAR)</span>
+                            <span>BLOCKINESS: ${forensic.blockiness_score.toFixed(1)}% (JPEG BOUNDARIES)</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
         // Render EXACT technical diagnostic classification cards matching Screenshot 2
         function displayResultHTML(data, expectedLabel) {
             const isFake = (data.prediction === 'FAKE');
@@ -2199,11 +2294,15 @@
                         <div class="details-box" style="border-left-color: ${matchCol}; margin-top:20px; background: rgba(16, 28, 48, 0.3); text-align: left; padding: 14px;">
                             <h4 style="color: ${matchCol}; font-family: var(--font-tech); font-size:11px; margin-bottom: 6px;">${matchMsg}</h4>
                             <div style="display: flex; gap: 30px; font-size:0.95em; color:white; font-family: var(--font-main);">
-                                <div>EXPECTED: <strong>${expectedLabel.toUpperCase()}</strong></div>
-                                <div>CLASSIFIED: <strong>${data.prediction}</strong></div>
+                                  <div>EXPECTED: <strong>${expectedLabel.toUpperCase()}</strong></div>
+                                  <div>CLASSIFIED: <strong>${data.prediction}</strong></div>
                             </div>
                         </div>
                 `;
+            }
+
+            if (data.forensic_analysis) {
+                html += getForensicReportHTML(data.forensic_analysis);
             }
             
             html += `
@@ -2417,6 +2516,10 @@
                     </div>`;
             });
 
+            if (data.forensic_analysis) {
+                html += getForensicReportHTML(data.forensic_analysis);
+            }
+
             html += `</div></div>`;
 
             document.getElementById('resultContainer').innerHTML = html;
@@ -2453,8 +2556,8 @@
                 }
                 
                 // Combine and slice items for limits
-                const quickReals = realList.concat(samples.real.videos).slice(0, 4);
-                const quickFakes = fakeList.concat(samples.fake.videos).slice(0, 4);
+                const quickReals = samples.real.images.concat(samples.real.videos).slice(0, 4);
+                const quickFakes = samples.fake.images.concat(samples.fake.videos).slice(0, 4);
                 
                 renderQuickGallery(quickReals, document.getElementById('realSamplesDetector'), 'real');
                 renderQuickGallery(quickFakes, document.getElementById('fakeSamplesDetector'), 'fake');
@@ -2512,6 +2615,26 @@
                 });
             } catch (err) {
                 console.error('Error rendering models grid:', err);
+            }
+        }
+
+        // Trigger in-memory cache clear to reload weights from disk
+        async function reloadModelWeights() {
+            try {
+                addTerminalLog('Initiating hot-reload command for neural networks...', 'alert');
+                const response = await fetch('/api/reload-models');
+                const result = await response.json();
+                if (result.status === 'success') {
+                    addTerminalLog('SUCCESS: Flush complete. All models cleared from in-memory cache.', 'info');
+                    alert('🔄 Hot-Reload Complete!\nAll model instances have been successfully cleared from the in-memory cache and will re-load their weights from disk on the next detection scan.');
+                } else {
+                    addTerminalLog('ERROR: Hot-reload request failed.', 'alert');
+                    alert('❌ Hot-Reload Failed: ' + result.message);
+                }
+            } catch (err) {
+                console.error('Error reloading model weights:', err);
+                addTerminalLog('EXCEPTION: ' + err.message, 'alert');
+                alert('❌ Error: ' + err.message);
             }
         }
 

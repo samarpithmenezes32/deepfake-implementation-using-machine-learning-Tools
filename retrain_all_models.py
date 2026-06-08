@@ -87,21 +87,52 @@ def retrain_model(model_type: str, epochs: int, batch_size: int, device: str):
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
     
     # Instantiate model
+    has_weights = os.path.exists(save_path)
+    pretrained_flag = not has_weights
+    
     if model_type == 'hybrid':
-        model = HybridDeepfakeDetector(pretrained=True)
+        model = HybridDeepfakeDetector(pretrained=pretrained_flag)
+        if has_weights:
+            print(f"Loading existing weights from {save_path} for fine-tuning...")
+            model.load_state_dict(torch.load(save_path, map_location=device))
+        for param in model.backbone.parameters():
+            param.requires_grad = False
     elif model_type == 'cnn':
-        model = CNNDeepfakeDetector(pretrained=True)
+        model = CNNDeepfakeDetector(pretrained=pretrained_flag)
+        if has_weights:
+            print(f"Loading existing weights from {save_path} for fine-tuning...")
+            model.load_state_dict(torch.load(save_path, map_location=device))
+        for param in model.backbone.parameters():
+            param.requires_grad = False
     elif model_type == 'lstm':
-        model = TemporalLSTMDetector(pretrained=True, sequence_length=16)
+        model = TemporalLSTMDetector(pretrained=pretrained_flag, sequence_length=16)
+        if has_weights:
+            print(f"Loading existing weights from {save_path} for fine-tuning...")
+            model.load_state_dict(torch.load(save_path, map_location=device))
+        for param in model.cnn_backbone.parameters():
+            param.requires_grad = False
+        for param in model.cnn_backbone.fc.parameters():
+            param.requires_grad = True
     elif model_type == 'transformer':
         model = TransformerDeepfakeDetector()
+        if has_weights:
+            print(f"Loading existing weights from {save_path} for fine-tuning...")
+            model.load_state_dict(torch.load(save_path, map_location=device))
+        for param in model.conv_stem.parameters():
+            param.requires_grad = False
     elif model_type == 'spectral':
-        model = SpectralAnalysisDetector(pretrained=True)
+        model = SpectralAnalysisDetector(pretrained=pretrained_flag)
+        if has_weights:
+            print(f"Loading existing weights from {save_path} for fine-tuning...")
+            model.load_state_dict(torch.load(save_path, map_location=device))
+        for param in model.spatial_branch.parameters():
+            param.requires_grad = False
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
         
     model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(trainable_params, lr=1e-4, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss()
     
     best_acc = 0.0

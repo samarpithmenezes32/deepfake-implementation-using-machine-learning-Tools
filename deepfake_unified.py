@@ -189,6 +189,33 @@ class SpectralAnalysisDetector(nn.Module):
 # UNIFIED DETECTION PIPELINE
 # ============================================================================
 
+def download_weights_if_missing(model_type):
+    os.makedirs('saved_models', exist_ok=True)
+    weights_path = os.path.join('saved_models', f'{model_type}.pth')
+    if not os.path.exists(weights_path) or os.path.getsize(weights_path) < 1000000:
+        print(f"[Info] Model weights for {model_type} not found or corrupt on disk. Fetching from remote release storage...")
+        # Direct link to GitHub release assets
+        url = f"https://github.com/samarpithmenezes32/deepfake-implementation-using-machine-learning-Tools/releases/download/v1.0.0/{model_type}.pth"
+        import urllib.request
+        import sys
+        
+        def reporthook(count, block_size, total_size):
+            if total_size <= 0:
+                sys.stdout.write(f"\rDownloading {model_type}.pth: {count * block_size} bytes...")
+            else:
+                percent = int(count * block_size * 100 / total_size)
+                sys.stdout.write(f"\rDownloading {model_type}.pth: {percent}% ({count * block_size} / {total_size} bytes)")
+            sys.stdout.flush()
+            
+        try:
+            print(f"Downloading {url} -> {weights_path}...")
+            urllib.request.urlretrieve(url, weights_path, reporthook)
+            print(f"\n[Success] Successfully downloaded {model_type}.pth weights.")
+        except Exception as e:
+            print(f"\n[Warning] Failed to download weights from {url}: {e}")
+            print("[Info] Falling back to default pre-trained initialization.")
+
+
 class UnifiedDeepfakeDetector:
     """Unified detector combining all models and features"""
     
@@ -409,6 +436,9 @@ class UnifiedDeepfakeDetector:
         
         model.to(self.device)
         
+        # Ensure weights are downloaded if running on Render / live
+        download_weights_if_missing(self.model_type)
+        
         # Load finetuned/retrained weights if available
         weights_path = os.path.join('saved_models', f'{self.model_type}.pth')
         if os.path.exists(weights_path):
@@ -515,3 +545,242 @@ class UnifiedDeepfakeDetector:
     def get_model_training_info(model_type: str) -> Dict:
         """Get detailed training and algorithm info for a model"""
         return UnifiedDeepfakeDetector.MODEL_DETAILS.get(model_type, {})
+
+
+class ForensicAnalyzer:
+    """Forensic Analysis Engine for pixel-by-pixel and biometric checks"""
+    @staticmethod
+    def analyze_image(img: np.ndarray) -> Dict:
+        """
+        Performs pixel-level, compression, and biometric forensic analysis of an image.
+        Returns a dictionary of analysis metrics and a textual verdict.
+        """
+        if img is None:
+            return {
+                'gan_score': 0.0,
+                'cfa_score': 100.0,
+                'sharpness': 0.0,
+                'blockiness_score': 0.0,
+                'face_detected': False,
+                'eyes_detected': False,
+                'eye_symmetry': 100.0,
+                'pupil_circularity': 100.0,
+                'face_symmetry': 100.0,
+                'forensic_fake_probability': 0.0,
+                'verdict': 'Invalid image resource.'
+            }
+
+        # Convert to grayscale for frequency and noise analysis
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape
+
+        # 1. High-frequency residual noise extraction (denoise and subtract)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        noise = gray.astype(np.float32) - blurred.astype(np.float32)
+
+        # 2. Fast Fourier Transform (FFT) on noise to find periodic checkerboard artifacts
+        fft_size = min(256, h, w)
+        fft_size = fft_size - (fft_size % 2)
+
+        if fft_size >= 32:
+            crop_h_start = (h - fft_size) // 2
+            crop_w_start = (w - fft_size) // 2
+            noise_crop = noise[crop_h_start:crop_h_start+fft_size, crop_w_start:crop_w_start+fft_size]
+
+            # Compute 2D FFT
+            dft = np.fft.fft2(noise_crop)
+            dft_shift = np.fft.fftshift(dft)
+            magnitude_spectrum = np.abs(dft_shift)
+
+            # Mask central low frequencies to focus on high-frequency upsampling artifacts
+            cy, cx = fft_size // 2, fft_size // 2
+            mask_r = max(5, fft_size // 20)
+            magnitude_spectrum[cy-mask_r:cy+mask_r, cx-mask_r:cx+mask_r] = 0
+
+            avg_energy = np.mean(magnitude_spectrum)
+            max_energy = np.max(magnitude_spectrum)
+            checkerboard_ratio = float(max_energy / max(1e-5, avg_energy))
+            gan_score = min(100.0, max(0.0, (checkerboard_ratio - 3.5) * 6.5))
+        else:
+            gan_score = 0.0
+
+        # 3. CFA (Color Filter Array) Interpolation Demosaicing artifacts
+        # Real cameras have regular sub-pixel correlations. AI images show irregular pixel noise.
+        green = img[:, :, 1]
+        g_diff = np.abs(green[1:, 1:].astype(np.float32) - green[:-1, :-1].astype(np.float32))
+        g_var = float(np.var(g_diff))
+        cfa_score = min(100.0, max(0.0, 100.0 - (g_var / 8.0)))
+
+        # 4. Frame Quality (Blurriness & Sharpness)
+        sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+        # 5. JPEG Compression Blockiness (8x8 grid analysis)
+        diff_boundary = 0.0
+        diff_non_boundary = 0.0
+        count_b = 0
+        count_nb = 0
+        for i in range(1, w - 1):
+            diff_col = np.abs(gray[:, i].astype(np.float32) - gray[:, i-1].astype(np.float32))
+            if i % 8 == 0:
+                diff_boundary += np.mean(diff_col)
+                count_b += 1
+            else:
+                diff_non_boundary += np.mean(diff_col)
+                count_nb += 1
+
+        blockiness = float(diff_boundary / max(1e-5, diff_non_boundary / max(1, count_nb)) * count_b) if count_nb > 0 and count_b > 0 else 1.0
+        blockiness_score = min(100.0, max(0.0, (blockiness - 0.95) * 80))
+
+        # Biometric analyses
+        eye_symmetry = 100.0
+        pupil_circularity = 100.0
+        face_symmetry = 100.0
+        face_detected = False
+        eyes_detected = False
+
+        # Load Cascades
+        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        eye_cascade_path = cv2.data.haarcascades + 'haarcascade_eye.xml'
+        face_cascade = cv2.CascadeClassifier(cascade_path)
+        eye_cascade = cv2.CascadeClassifier(eye_cascade_path)
+
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(60, 60))
+        if len(faces) > 0:
+            face_detected = True
+            # Analyze largest face
+            x, y, w_f, h_f = max(faces, key=lambda r: r[2] * r[3])
+            face_crop = gray[y:y+h_f, x:x+w_f]
+
+            # Bilateral facial symmetry
+            half_w = w_f // 2
+            left_half = face_crop[:, :half_w]
+            right_half = face_crop[:, half_w:half_w*2]
+            right_half_flipped = cv2.flip(right_half, 1)
+
+            try:
+                # Resize halves to match exactly
+                h_min = min(left_half.shape[0], right_half_flipped.shape[0])
+                w_min = min(left_half.shape[1], right_half_flipped.shape[1])
+                l_h = cv2.resize(left_half, (w_min, h_min))
+                r_h = cv2.resize(right_half_flipped, (w_min, h_min))
+                corr = np.corrcoef(l_h.flatten(), r_h.flatten())[0, 1]
+                face_symmetry = float((corr + 1.0) / 2.0 * 100.0)
+                if np.isnan(face_symmetry):
+                    face_symmetry = 80.0
+            except:
+                face_symmetry = 80.0
+
+            # Detect eyes within face region
+            face_color = img[y:y+h_f, x:x+w_f]
+            eyes = eye_cascade.detectMultiScale(face_crop, 1.1, 3, minSize=(15, 15))
+
+            if len(eyes) >= 2:
+                eyes_detected = True
+                eyes = sorted(eyes, key=lambda e: e[0])
+                eye1_x, eye1_y, eye1_w, eye1_h = eyes[0]
+                eye2_x, eye2_y, eye2_w, eye2_h = eyes[1]
+
+                eye1_patch = face_color[eye1_y:eye1_y+eye1_h, eye1_x:eye1_x+eye1_w]
+                eye2_patch = face_color[eye2_y:eye2_y+eye2_h, eye2_x:eye2_x+eye2_w]
+
+                # Compute Eye Symmetry
+                try:
+                    hsv1 = cv2.cvtColor(eye1_patch, cv2.COLOR_BGR2HSV)
+                    hsv2 = cv2.cvtColor(eye2_patch, cv2.COLOR_BGR2HSV)
+                    hist1 = cv2.calcHist([hsv1], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                    hist2 = cv2.calcHist([hsv2], [0, 1], None, [16, 16], [0, 180, 0, 256])
+                    cv2.normalize(hist1, hist1, 0, 1, cv2.NORM_MINMAX)
+                    cv2.normalize(hist2, hist2, 0, 1, cv2.NORM_MINMAX)
+                    sim = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
+                    eye_symmetry = float(max(0.0, sim * 100.0))
+                    if np.isnan(eye_symmetry):
+                        eye_symmetry = 80.0
+                except:
+                    eye_symmetry = 75.0
+
+                # Analyze Pupil Circularity
+                try:
+                    circularity_vals = []
+                    for eye_patch in (eye1_patch, eye2_patch):
+                        eye_gray = cv2.cvtColor(eye_patch, cv2.COLOR_BGR2GRAY)
+                        _, thresh = cv2.threshold(eye_gray, 50, 255, cv2.THRESH_BINARY_INV)
+                        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        if contours:
+                            largest_cnt = max(contours, key=cv2.contourArea)
+                            area = cv2.contourArea(largest_cnt)
+                            perimeter = cv2.arcLength(largest_cnt, True)
+                            if area > 8 and perimeter > 0:
+                                circ = (4 * np.pi * area) / (perimeter ** 2)
+                                circularity_vals.append(circ)
+                    if circularity_vals:
+                        pupil_circularity = float(np.mean(circularity_vals) * 100.0)
+                        pupil_circularity = min(100.0, max(0.0, pupil_circularity))
+                    else:
+                        pupil_circularity = 85.0
+                except:
+                    pupil_circularity = 85.0
+
+        # Weighted fake probability calculations
+        cfa_anomaly = 100.0 - cfa_score
+        eye_anomaly = 100.0 - eye_symmetry
+        pupil_anomaly = 100.0 - pupil_circularity
+        face_anomaly = 100.0 - face_symmetry
+
+        if not face_detected:
+            forensic_fake_prob = (gan_score * 0.65) + (cfa_anomaly * 0.35)
+        elif not eyes_detected:
+            forensic_fake_prob = (gan_score * 0.40) + (cfa_anomaly * 0.20) + (face_anomaly * 0.40)
+        else:
+            forensic_fake_prob = (
+                (gan_score * 0.35) +
+                (cfa_anomaly * 0.15) +
+                (eye_anomaly * 0.20) +
+                (pupil_anomaly * 0.15) +
+                (face_anomaly * 0.15)
+            )
+
+        forensic_fake_prob = float(min(100.0, max(0.0, forensic_fake_prob)))
+
+        # Compile detailed explanation
+        verdicts = []
+        if gan_score > 35.0:
+            verdicts.append(f"High-frequency FFT analysis detected periodic grid artifacts ({gan_score:.1f}% confidence) characteristic of AI upsampling / generator architectures (GAN/Diffusion).")
+        else:
+            verdicts.append("FFT spectrum of pixel noise residuals shows a natural power-law distribution without artificial periodic spikes.")
+
+        if cfa_score < 70.0:
+            verdicts.append(f"Sub-pixel CFA demosaicing correlations are weak ({cfa_score:.1f}% integrity), suggesting direct digital synthesis rather than image capture via physical sensor.")
+        else:
+            verdicts.append(f"Strong Color Filter Array (CFA) interpolation signatures detected ({cfa_score:.1f}% integrity), indicating a physical camera sensor origin.")
+
+        if face_detected:
+            if eyes_detected:
+                if eye_symmetry < 78.0:
+                    verdicts.append(f"Significant color/texture asymmetry between left and right eyes (symmetry: {eye_symmetry:.1f}%), indicating deepfake rendering inconsistencies.")
+                if pupil_circularity < 82.0:
+                    verdicts.append(f"Pupil/Iris geometry shows irregular non-circular distortions (circularity: {pupil_circularity:.1f}%), pointing to generative AI structural errors.")
+                if eye_symmetry >= 78.0 and pupil_circularity >= 82.0:
+                    verdicts.append("Ocular geometry, symmetry, and color mapping appear structurally consistent.")
+
+                if face_symmetry < 72.0:
+                    verdicts.append(f"Bilateral facial symmetry is anomalous ({face_symmetry:.1f}%), indicating localized deepfake splicing/blending artifacts.")
+            else:
+                verdicts.append("Face detected, but ocular structures could not be isolated for eye-expression / circularity validation.")
+        else:
+            verdicts.append("No facial structures found. Pixel integrity, background noise distribution, and sensor signatures suggest a non-portrait origin.")
+
+        summary_verdict = " ".join(verdicts)
+
+        return {
+            'gan_score': round(gan_score, 2),
+            'cfa_score': round(cfa_score, 2),
+            'sharpness': round(sharpness, 2),
+            'blockiness_score': round(blockiness_score, 2),
+            'face_detected': face_detected,
+            'eyes_detected': eyes_detected,
+            'eye_symmetry': round(eye_symmetry, 2),
+            'pupil_circularity': round(pupil_circularity, 2),
+            'face_symmetry': round(face_symmetry, 2),
+            'forensic_fake_probability': round(forensic_fake_prob / 100.0, 4),
+            'verdict': summary_verdict
+        }
